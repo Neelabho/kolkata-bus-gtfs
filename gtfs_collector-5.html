@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>GTFS Field Collector</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Barlow:wght@400;500;600;700;900&display=swap');
+
+:root {
+  --bg: #0d0d0d;
+  --surface: #161616;
+  --card: #1c1c1c;
+  --border: #2a2a2a;
+  --accent: #00e676;
+  --accent-dim: rgba(0,230,118,0.10);
+  --accent-border: rgba(0,230,118,0.3);
+  --warn: #ffab00;
+  --danger: #ff5252;
+  --text: #f0f0f0;
+  --muted: #666;
+  --mono: 'DM Mono', monospace;
+  --sans: 'Barlow', sans-serif;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+  padding-bottom: 5rem;
+  background-image: radial-gradient(ellipse at 50% 0%, rgba(0,230,118,0.025) 0%, transparent 60%);
+}
+
+.topbar {
+  position: sticky; top:0; z-index:100;
+  background: rgba(13,13,13,0.96);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 0.85rem 1.2rem;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.topbar-title { font-family:var(--mono); font-size:0.65rem; color:var(--accent); letter-spacing:0.15em; text-transform:uppercase; }
+.trip-timer { font-family:var(--mono); font-size:1.05rem; font-weight:500; color:var(--text); display:none; }
+.trip-timer.running { display:block; color:var(--accent); }
+
+.nav-dots { display:flex; justify-content:center; gap:0.5rem; padding:0.75rem 0; }
+.nav-dot { width:6px; height:6px; border-radius:50%; background:var(--border); transition:all 0.2s; }
+.nav-dot.active { background:var(--accent); width:18px; border-radius:3px; }
+
+.section { padding:1.2rem; display:none; }
+.section.visible { display:block; }
+
+.screen-label { font-family:var(--mono); font-size:0.6rem; color:var(--muted); letter-spacing:0.2em; text-transform:uppercase; margin-bottom:1.2rem; }
+.big-label { font-size:1.6rem; font-weight:900; line-height:1.1; margin-bottom:0.35rem; }
+.sub-label { font-size:0.82rem; color:var(--muted); margin-bottom:1.8rem; line-height:1.5; }
+
+.field-group { margin-bottom:1.1rem; }
+.field-label { font-family:var(--mono); font-size:0.58rem; color:var(--muted); letter-spacing:0.15em; text-transform:uppercase; margin-bottom:0.35rem; display:block; }
+
+input[type="text"], select {
+  width:100%; background:var(--card); border:1px solid var(--border); border-radius:10px;
+  padding:0.85rem 1rem; color:var(--text); font-family:var(--sans); font-size:1rem;
+  outline:none; transition:border-color 0.2s; -webkit-appearance:none;
+}
+input:focus, select:focus { border-color:var(--accent); }
+input::placeholder { color:var(--muted); }
+
+.row-2 { display:grid; grid-template-columns:1fr 1fr; gap:0.8rem; }
+
+.btn {
+  width:100%; padding:0.95rem; border-radius:12px; border:none;
+  font-family:var(--sans); font-weight:700; font-size:0.95rem;
+  cursor:pointer; transition:transform 0.1s; letter-spacing:0.02em;
+  display:flex; align-items:center; justify-content:center; gap:0.5rem;
+}
+.btn:active { transform:scale(0.97); }
+.btn-primary { background:var(--accent); color:#000; }
+.btn-warn { background:var(--warn); color:#000; }
+.btn-danger { background:var(--danger); color:#fff; }
+.btn-ghost { background:var(--card); color:var(--text); border:1px solid var(--border); }
+.btn-sm { padding:0.5rem 0.9rem; font-size:0.8rem; width:auto; }
+
+.status-card {
+  background:var(--card); border:1px solid var(--accent-border);
+  background-color:var(--accent-dim);
+  border-radius:14px; padding:1rem 1.2rem; margin-bottom:1.2rem;
+}
+.status-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem; }
+.status-key { font-family:var(--mono); font-size:0.58rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.1em; }
+.status-val { font-family:var(--mono); font-size:0.82rem; font-weight:500; }
+.status-val.hi { color:var(--accent); }
+
+.stop-entry-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:1.2rem; margin-bottom:1.2rem; }
+.stop-entry-title { font-size:0.65rem; font-family:var(--mono); color:var(--warn); letter-spacing:0.15em; text-transform:uppercase; margin-bottom:1rem; }
+
+.gps-bar {
+  display:flex; align-items:center; gap:0.6rem;
+  padding:0.55rem 0.8rem; background:var(--accent-dim);
+  border:1px solid var(--accent-border); border-radius:8px; margin-bottom:1rem;
+}
+.gps-dot { width:8px; height:8px; border-radius:50%; background:var(--accent); animation:gpspulse 1.5s infinite; flex-shrink:0; }
+@keyframes gpspulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.8)} }
+.gps-text { font-family:var(--mono); font-size:0.6rem; color:var(--accent); }
+
+.dwell-row { display:flex; align-items:center; gap:0.8rem; margin-top:0.8rem; }
+.dwell-label { font-family:var(--mono); font-size:0.58rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.1em; flex-shrink:0; }
+.dwell-counter { display:flex; align-items:center; gap:0.4rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:0.25rem 0.4rem; }
+.dwell-btn { width:28px; height:28px; border-radius:6px; border:none; background:var(--border); color:var(--text); font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.dwell-btn:active { background:var(--accent); color:#000; }
+.dwell-value { font-family:var(--mono); font-size:0.85rem; min-width:2.2rem; text-align:center; }
+
+.stops-log-title { font-family:var(--mono); font-size:0.58rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.15em; margin-bottom:0.75rem; display:flex; justify-content:space-between; }
+
+.stop-item { display:flex; align-items:flex-start; gap:0.8rem; padding:0.75rem 1rem; background:var(--card); border:1px solid var(--border); border-radius:10px; margin-bottom:0.5rem; animation:slideIn 0.2s ease; }
+@keyframes slideIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+.stop-seq { font-family:var(--mono); font-size:0.62rem; color:var(--accent); min-width:1.4rem; padding-top:0.15rem; }
+.stop-details { flex:1; }
+.stop-name-text { font-weight:600; font-size:0.88rem; margin-bottom:0.2rem; }
+.stop-meta { font-family:var(--mono); font-size:0.58rem; color:var(--muted); line-height:1.6; }
+.stop-meta em { color:#888; font-style:normal; }
+.stop-del { background:none; border:none; color:var(--muted); font-size:0.9rem; cursor:pointer; padding:0.2rem; }
+.stop-del:active { color:var(--danger); }
+
+.action-bar { position:fixed; bottom:0; left:0; right:0; background:rgba(13,13,13,0.98); backdrop-filter:blur(12px); border-top:1px solid var(--border); padding:0.9rem 1.2rem; display:none; gap:0.8rem; z-index:100; }
+.action-bar.visible { display:flex; }
+
+.dl-card { background:var(--card); border:1px solid var(--accent-border); border-radius:14px; padding:1.2rem; margin-bottom:1rem; }
+.dl-card-title { font-family:var(--mono); font-size:0.58rem; color:var(--accent); text-transform:uppercase; letter-spacing:0.15em; margin-bottom:0.8rem; }
+.file-row { display:flex; align-items:center; justify-content:space-between; padding:0.55rem 0; border-bottom:1px solid var(--border); }
+.file-row:last-child { border-bottom:none; }
+.file-name { font-family:var(--mono); font-size:0.78rem; }
+.file-sz { font-family:var(--mono); font-size:0.62rem; color:var(--muted); }
+
+.preview-box { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:0.75rem; margin-top:0.8rem; overflow-x:auto; }
+.preview-box pre { font-family:var(--mono); font-size:0.58rem; color:#aaa; white-space:pre; line-height:1.6; }
+
+.summary-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:1.4rem; }
+.sum-tile { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:0.75rem 1rem; }
+.sum-val { font-family:var(--mono); font-size:1.25rem; font-weight:500; color:var(--accent); margin-bottom:0.15rem; }
+.sum-lbl { font-family:var(--mono); font-size:0.52rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.1em; }
+
+.toast { position:fixed; bottom:5.5rem; left:50%; transform:translateX(-50%) translateY(16px); background:var(--accent); color:#000; font-weight:700; font-size:0.78rem; padding:0.55rem 1.1rem; border-radius:30px; opacity:0; transition:opacity 0.2s,transform 0.2s; pointer-events:none; white-space:nowrap; z-index:999; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-title">GTFS Field Collector</div>
+  <div class="trip-timer" id="tripTimer">00:00:00</div>
+</div>
+
+<div class="nav-dots">
+  <div class="nav-dot active" id="dot0"></div>
+  <div class="nav-dot" id="dot1"></div>
+  <div class="nav-dot" id="dot2"></div>
+</div>
+
+<!-- ── SCREEN 0: SETUP ── -->
+<div class="section visible" id="screen-setup">
+  <div class="screen-label">Step 1 of 3 — Trip Setup</div>
+  <div class="big-label">New Trip</div>
+  <p class="sub-label">Fill in the bus details before you board. GPS captures your location automatically at each stop. When in doubt — look at the front of the bus.</p>
+
+  <div class="field-group">
+    <label class="field-label">Route ID / Bus Number</label>
+    <input type="text" id="routeId" placeholder="e.g. S9, PINK, 4A">
+  </div>
+  <div class="field-group">
+    <label class="field-label">Route Long Name — where does this bus travel end to end?</label>
+    <input type="text" id="routeName" placeholder="e.g. Howrah Station to Salt Lake Sector V">
+  </div>
+  <div class="field-group">
+    <label class="field-label">Headsign — what destination is written on the FRONT of the bus?</label>
+    <input type="text" id="headsign" placeholder="e.g. Salt Lake Sector V via Esplanade, Park Street" oninput="updateDirectionLabels()">
+  </div>
+  <div class="field-group">
+    <label class="field-label">Direction — are you going TOWARD or AWAY FROM what the front of the bus says?</label>
+    <select id="direction">
+      <option value="0">Going TOWARD the destination on the front of the bus</option>
+      <option value="1">Going AWAY FROM it (toward the other end)</option>
+    </select>
+  </div>
+  <div class="field-group">
+    <label class="field-label">Service Days</label>
+    <select id="serviceId">
+      <option value="WEEKDAY">Weekday (Mon–Fri)</option>
+      <option value="WEEKEND">Weekend (Sat–Sun)</option>
+      <option value="DAILY">Daily (Every day)</option>
+    </select>
+  </div>
+  <div class="field-group">
+    <label class="field-label">Agency</label>
+    <select id="agency">
+      <option value="Private">Private</option>
+      <option value="WBTC">WBTC</option>
+      <option value="None">None / Don't Know</option>
+    </select>
+  </div>
+  <div class="field-group">
+    <label class="field-label">Collected By (your name)</label>
+    <input type="text" id="collectedBy" placeholder="e.g. Neelabho">
+  </div>
+  <br>
+  <button class="btn btn-primary" onclick="startTrip()">🚌 &nbsp;On Bus — Start Trip</button>
+</div>
+
+<!-- ── SCREEN 1: RECORDING ── -->
+<div class="section" id="screen-record" style="padding-bottom:6rem">
+  <div class="screen-label">Step 2 of 3 — Recording</div>
+
+  <div class="status-card">
+    <div class="status-row"><div class="status-key">Route</div><div class="status-val hi" id="dispRoute">—</div></div>
+    <div class="status-row"><div class="status-key">Trip ID</div><div class="status-val" id="dispTripId">—</div></div>
+    <div class="status-row"><div class="status-key">Start Time</div><div class="status-val" id="dispStart">—</div></div>
+    <div class="status-row"><div class="status-key">Stops Logged</div><div class="status-val hi" id="dispCount">0</div></div>
+  </div>
+
+  <div class="stop-entry-card">
+    <div class="stop-entry-title">📍 Add Stop</div>
+    <div class="gps-bar">
+      <div class="gps-dot"></div>
+      <div class="gps-text" id="gpsText">Acquiring GPS...</div>
+    </div>
+    <div class="field-group">
+      <label class="field-label">Stop Name</label>
+      <input type="text" id="stopName" placeholder="e.g. Esplanade">
+    </div>
+    <div class="dwell-row">
+      <div class="dwell-label">Dwell (sec)</div>
+      <div class="dwell-counter">
+        <button class="dwell-btn" onclick="chDwell(-15)">−</button>
+        <div class="dwell-value" id="dwellVal">30</div>
+        <button class="dwell-btn" onclick="chDwell(15)">+</button>
+      </div>
+      <span style="font-family:var(--mono);font-size:0.58rem;color:var(--muted)">bus wait time</span>
+    </div>
+    <br>
+    <button class="btn btn-warn" onclick="addStop()">＋ &nbsp;Add Stop</button>
+  </div>
+
+  <div class="stops-log-title">
+    <span>Stops Logged</span>
+    <span id="stopCountLbl">0 stops</span>
+  </div>
+  <div id="stopsListEl"></div>
+</div>
+
+<!-- ── SCREEN 2: DOWNLOAD ── -->
+<div class="section" id="screen-download">
+  <div class="screen-label">Step 3 of 3 — Trip Complete</div>
+  <div class="big-label">Trip Saved ✓</div>
+  <p class="sub-label">Your GTFS files are ready. Download individually or all at once.</p>
+
+  <div class="summary-grid" id="summaryGrid"></div>
+
+  <div class="dl-card" style="border-color:var(--accent-border);background:var(--accent-dim)">
+    <div class="dl-card-title">📦 Your Trip File</div>
+    <p style="font-size:0.8rem;color:#aaa;line-height:1.5;margin-bottom:1rem">This single JSON file contains your entire trip. Download it and send it on WhatsApp.</p>
+    <button class="btn btn-primary" onclick="dlJSON()">⬇ &nbsp;Download Trip JSON</button>
+  </div>
+
+  <div class="dl-card">
+    <div class="dl-card-title">Individual GTFS Files (advanced)</div>
+    <div id="filesList"></div>
+  </div>
+
+  <div class="dl-card">
+    <div class="dl-card-title">Preview — stop_times.txt</div>
+    <div class="preview-box"><pre id="prevStopTimes">—</pre></div>
+  </div>
+
+  <div class="dl-card">
+    <div class="dl-card-title">Preview — stops.txt</div>
+    <div class="preview-box"><pre id="prevStops">—</pre></div>
+  </div>
+
+  <br>
+  <button class="btn btn-ghost" onclick="newTrip()">← &nbsp;Record Another Trip</button>
+</div>
+
+<!-- STICKY ACTION BAR -->
+<div class="action-bar" id="actionBar">
+  <button class="btn btn-ghost btn-sm" style="flex:1" onclick="undoLast()">↩ Undo</button>
+  <button class="btn btn-danger" style="flex:2" onclick="endTrip()">⏹ &nbsp;End Trip</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── STATE ──
+let trip = {};
+let timerInterval = null;
+let timerSecs = 0;
+let gps = null;
+let gpsWatch = null;
+let dwell = 30;
+
+// ── SCREEN NAV ──
+function showScreen(n) {
+  document.querySelectorAll('.section').forEach((s,i) => s.classList.toggle('visible', i===n));
+  document.querySelectorAll('.nav-dot').forEach((d,i) => d.classList.toggle('active', i===n));
+  document.getElementById('actionBar').classList.toggle('visible', n===1);
+}
+
+// ── GPS ──
+function startGPS() {
+  if (!navigator.geolocation) { document.getElementById('gpsText').textContent = 'GPS unavailable'; return; }
+  gpsWatch = navigator.geolocation.watchPosition(
+    p => {
+      gps = { lat: p.coords.latitude, lon: p.coords.longitude, acc: Math.round(p.coords.accuracy) };
+      document.getElementById('gpsText').textContent = `${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}  ±${gps.acc}m`;
+    },
+    () => { document.getElementById('gpsText').textContent = 'GPS failed — coords will be 0,0'; },
+    { enableHighAccuracy: true, maximumAge: 4000 }
+  );
+}
+function stopGPS() { if (gpsWatch !== null) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; } }
+
+// ── TIMER ──
+function startTimer() {
+  timerSecs = 0;
+  const el = document.getElementById('tripTimer');
+  el.classList.add('running');
+  timerInterval = setInterval(() => {
+    timerSecs++;
+    const h = String(Math.floor(timerSecs/3600)).padStart(2,'0');
+    const m = String(Math.floor((timerSecs%3600)/60)).padStart(2,'0');
+    const s = String(timerSecs%60).padStart(2,'0');
+    el.textContent = `${h}:${m}:${s}`;
+  }, 1000);
+}
+function stopTimer() { clearInterval(timerInterval); document.getElementById('tripTimer').classList.remove('running'); }
+
+// ── HELPERS ──
+function nowHMS() {
+  const n = new Date();
+  return `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}:${String(n.getSeconds()).padStart(2,'0')}`;
+}
+function addSecs(t, s) {
+  const [h,m,sc] = t.split(':').map(Number);
+  const tot = h*3600+m*60+sc+s;
+  return `${String(Math.floor(tot/3600)).padStart(2,'0')}:${String(Math.floor((tot%3600)/60)).padStart(2,'0')}:${String(tot%60).padStart(2,'0')}`;
+}
+function makeTripId(route, time, dir) {
+  return `${route}-${time.replace(/:/g,'').slice(0,4)}-${dir==='0'?'OUT':'RTN'}`;
+}
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+function chDwell(d) { dwell = Math.max(0, dwell+d); document.getElementById('dwellVal').textContent = dwell; }
+
+// ── DIRECTION LABELS ──
+function updateDirectionLabels() {
+  const headsign = document.getElementById('headsign').value.trim();
+  const sel = document.getElementById('direction');
+  // Extract destination — everything before "via" and after the last " - "
+  const dest = headsign || 'the destination on the front of the bus';
+  const shortDest = dest.split(' via ')[0].split(' - ').pop().trim();
+  const label = shortDest.length > 22 ? shortDest.slice(0, 22) + '…' : shortDest;
+  sel.options[0].text = `✓ Going TOWARD "${label}" — this is my direction`;
+  sel.options[1].text = `✗ Going AWAY from "${label}" — toward the other end`;
+}
+
+// ── START TRIP ──
+function startTrip() {
+  const routeId = document.getElementById('routeId').value.trim().toUpperCase();
+  const headsign = document.getElementById('headsign').value.trim();
+  if (!routeId) { toast('Enter a Route ID first'); return; }
+  if (!headsign) { toast('Enter the headsign'); return; }
+  const t = nowHMS();
+  trip = {
+    routeId, headsign,
+    routeName: document.getElementById('routeName').value.trim() || routeId,
+    direction: document.getElementById('direction').value,
+    serviceId: document.getElementById('serviceId').value,
+    agency: document.getElementById('agency').value,
+    collectedBy: document.getElementById('collectedBy').value.trim() || 'Unknown',
+    collectedOn: new Date().toISOString().slice(0,10),
+    tripId: makeTripId(routeId, t, document.getElementById('direction').value),
+    startTime: new Date(), startTimeStr: t, stops: []
+  };
+  document.getElementById('dispRoute').textContent = `${routeId} → ${headsign}`;
+  document.getElementById('dispTripId').textContent = trip.tripId;
+  document.getElementById('dispStart').textContent = t;
+  document.getElementById('dispCount').textContent = '0';
+  startTimer(); startGPS(); showScreen(1); toast('Trip started! Add your first stop.');
+}
+
+// ── ADD STOP ──
+function addStop() {
+  const name = document.getElementById('stopName').value.trim();
+  if (!name) { toast('Enter stop name'); return; }
+  const arr = nowHMS();
+  const dep = addSecs(arr, dwell);
+  const seq = trip.stops.length + 1;
+  trip.stops.push({
+    seq, name,
+    stopId: `${trip.routeId}-S${String(seq).padStart(3,'0')}`,
+    lat: gps ? gps.lat : 0,
+    lon: gps ? gps.lon : 0,
+    arrivalTime: arr, departureTime: dep, dwell,
+    verified: gps !== null
+  });
+  document.getElementById('dispCount').textContent = trip.stops.length;
+  document.getElementById('stopCountLbl').textContent = `${trip.stops.length} stop${trip.stops.length!==1?'s':''}`;
+  renderStops();
+  document.getElementById('stopName').value = '';
+  toast(`Stop ${seq} logged ✓`);
+}
+
+// ── RENDER STOPS ──
+function renderStops() {
+  const el = document.getElementById('stopsListEl');
+  el.innerHTML = '';
+  [...trip.stops].reverse().forEach(s => {
+    const d = document.createElement('div');
+    d.className = 'stop-item';
+    d.innerHTML = `
+      <div class="stop-seq">${s.seq}</div>
+      <div class="stop-details">
+        <div class="stop-name-text">${s.name}</div>
+        <div class="stop-meta">
+          <em>${s.arrivalTime}</em> → <em>${s.departureTime}</em> &nbsp;·&nbsp;
+          ${s.lat!==0 ? `${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}` : '⚠ no GPS'} &nbsp;·&nbsp;
+          ${s.verified ? '✓ GPS' : '⚠ unverified'}
+        </div>
+      </div>
+      <button class="stop-del" onclick="delStop(${s.seq})">✕</button>`;
+    el.appendChild(d);
+  });
+}
+
+function delStop(seq) {
+  trip.stops = trip.stops.filter(s => s.seq !== seq);
+  trip.stops.forEach((s,i) => { s.seq=i+1; s.stopId=`${trip.routeId}-S${String(i+1).padStart(3,'0')}`; });
+  document.getElementById('dispCount').textContent = trip.stops.length;
+  document.getElementById('stopCountLbl').textContent = `${trip.stops.length} stop${trip.stops.length!==1?'s':''}`;
+  renderStops(); toast('Stop removed');
+}
+
+function undoLast() {
+  if (!trip.stops.length) { toast('No stops to undo'); return; }
+  trip.stops.pop();
+  document.getElementById('dispCount').textContent = trip.stops.length;
+  document.getElementById('stopCountLbl').textContent = `${trip.stops.length} stop${trip.stops.length!==1?'s':''}`;
+  renderStops(); toast('Last stop undone');
+}
+
+// ── END TRIP ──
+function endTrip() {
+  if (trip.stops.length < 2) { toast('Add at least 2 stops'); return; }
+  stopTimer(); stopGPS();
+  buildDownloadScreen(); showScreen(2);
+}
+
+// ── GTFS BUILDERS ──
+function buildAgency()    { return `agency_id,agency_name,agency_url,agency_timezone\n${trip.agency},West Bengal Transport Corporation,https://www.wbtc.co.in,Asia/Kolkata\n`; }
+function buildRoutes()    { return `route_id,agency_id,route_short_name,route_long_name,route_type\n${trip.routeId},${trip.agency},${trip.routeId},${trip.routeName},3\n`; }
+function buildStops()     { let c='stop_id,stop_name,stop_lat,stop_lon,verified\n'; trip.stops.forEach(s => { c+=`${s.stopId},${s.name},${s.lat},${s.lon},${s.verified}\n`; }); return c; }
+function buildTrips()     { return `route_id,service_id,trip_id,direction_id,trip_headsign\n${trip.routeId},${trip.serviceId},${trip.tripId},${trip.direction},${trip.headsign}\n`; }
+function buildStopTimes() { let c='trip_id,arrival_time,departure_time,stop_id,stop_sequence\n'; trip.stops.forEach(s => { c+=`${trip.tripId},${s.arrivalTime},${s.departureTime},${s.stopId},${s.seq}\n`; }); return c; }
+function buildCalendar()  {
+  const y = new Date().getFullYear();
+  const rows = { WEEKDAY:`WEEKDAY,1,1,1,1,1,0,0,${y}0101,${y}1231`, WEEKEND:`WEEKEND,0,0,0,0,0,1,1,${y}0101,${y}1231`, DAILY:`DAILY,1,1,1,1,1,1,1,${y}0101,${y}1231` };
+  return `service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\n${rows[trip.serviceId]||rows.WEEKDAY}\n`;
+}
+
+const FILES = [
+  {name:'agency.txt',    fn:buildAgency},
+  {name:'routes.txt',    fn:buildRoutes},
+  {name:'stops.txt',     fn:buildStops},
+  {name:'trips.txt',     fn:buildTrips},
+  {name:'stop_times.txt',fn:buildStopTimes},
+  {name:'calendar.txt',  fn:buildCalendar},
+];
+
+function buildJSON() {
+  const payload = {
+    routeId: trip.routeId,
+    routeName: trip.routeName,
+    direction: trip.direction,
+    serviceId: trip.serviceId,
+    headsign: trip.headsign,
+    agency: trip.agency,
+    tripId: trip.tripId,
+    startTimeStr: trip.startTimeStr,
+    collectedBy: trip.collectedBy,
+    collectedOn: trip.collectedOn,
+    stops: trip.stops.map(s => ({
+      seq: s.seq,
+      stopId: s.stopId,
+      name: s.name,
+      lat: s.lat,
+      lon: s.lon,
+      arrivalTime: s.arrivalTime,
+      departureTime: s.departureTime,
+      verified: s.verified
+    }))
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+function jsonFilename() {
+  const by = trip.collectedBy.replace(/\s+/g,'_').toLowerCase();
+  return `trip_${trip.routeId}_${by}_${trip.collectedOn}.json`;
+}
+
+// ── DOWNLOAD SCREEN ──
+function buildDownloadScreen() {
+  const dur = Math.round((new Date()-trip.startTime)/60000);
+  document.getElementById('summaryGrid').innerHTML = `
+    <div class="sum-tile"><div class="sum-val">${trip.routeId}</div><div class="sum-lbl">Route</div></div>
+    <div class="sum-tile"><div class="sum-val">${trip.stops.length}</div><div class="sum-lbl">Stops</div></div>
+    <div class="sum-tile"><div class="sum-val">${dur}m</div><div class="sum-lbl">Duration</div></div>
+    <div class="sum-tile"><div class="sum-val">${trip.stops.filter(s=>s.verified).length}</div><div class="sum-lbl">GPS Verified</div></div>`;
+
+  const fl = document.getElementById('filesList');
+  fl.innerHTML = '';
+  FILES.forEach(f => {
+    const content = f.fn();
+    const sz = new Blob([content]).size;
+    const label = sz < 1024 ? `${sz} B` : `${(sz/1024).toFixed(1)} KB`;
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.innerHTML = `<div class="file-name">${f.name}</div><div style="display:flex;align-items:center;gap:0.7rem"><div class="file-sz">${label}</div><button class="btn btn-ghost btn-sm" onclick="dlSingle('${f.name}')">↓</button></div>`;
+    fl.appendChild(row);
+  });
+
+  document.getElementById('prevStopTimes').textContent = buildStopTimes();
+  document.getElementById('prevStops').textContent = buildStops();
+}
+
+function dlFile(name, content, type='text/csv;charset=utf-8;') {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content],{type}));
+  a.download = name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function dlJSON() { dlFile(jsonFilename(), buildJSON(), 'application/json'); toast('JSON downloaded — send on WhatsApp!'); }
+function dlSingle(name) { const f=FILES.find(x=>x.name===name); if(f){dlFile(name,f.fn()); toast(`${name} downloaded`);} }
+async function downloadAll() {
+  for (const f of FILES) { dlFile(f.name, f.fn()); await new Promise(r=>setTimeout(r,300)); }
+  toast('All 6 files downloaded!');
+}
+
+function newTrip() {
+  trip={}; timerSecs=0; dwell=30; gps=null;
+  document.getElementById('tripTimer').textContent='00:00:00';
+  document.getElementById('stopsListEl').innerHTML='';
+  document.getElementById('stopCountLbl').textContent='0 stops';
+  document.getElementById('dwellVal').textContent='30';
+  document.getElementById('gpsText').textContent='Acquiring GPS...';
+  document.getElementById('collectedBy').value='';
+  showScreen(0);
+}
+</script>
+</body>
+</html>
