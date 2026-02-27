@@ -9,8 +9,8 @@ This project creates that foundation — starting with manually verified route a
 No coding experience needed. Just ride a bus.
 
 Open the collector tool at neelabho.github.io/kolkata-bus-gtfs
-Fill in the route details before boarding
-Tap Add Stop at every bus stop along the route
-Tap End Trip when you reach the final stop
-Download the trip JSON file
-Send it to Neelabho on WhatsApp (if you have the number) or email: examplesir6@gmail.com
+1. Fill in the route details before boarding
+2. Tap Add Stop at every bus stop along the route
+3. Tap End Trip when you reach the final stop
+4. Download the trip JSON file
+5. Send it to Neelabho on WhatsApp (if you have the number) or email: examplesir6@gmail.com
