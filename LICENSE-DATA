@@ -1,0 +1,27 @@
+Creative Commons Attribution 4.0 International License (CC BY 4.0)
+
+Copyright (c) 2026 Neelabho Chakraborty
+
+This license applies to all data files in this repository, including but not
+limited to the GTFS files in the /gtfs folder and the raw trip JSON files in
+the /received_trips folder.
+
+You are free to:
+  Share  — copy and redistribute the data in any medium or format
+  Adapt  — remix, transform, and build upon the data for any purpose,
+           including commercial use
+
+Under the following terms:
+  Attribution — You must give appropriate credit to Neelabho Chakraborty,
+                provide a link to this repository, and indicate if changes
+                were made. You may do so in any reasonable manner, but not
+                in any way that suggests the licensor endorses you or your use.
+
+Attribution should read as:
+  "Bus route data sourced from the Kolkata Bus GTFS Dataset by Neelabho
+   Chakraborty — https://github.com/neelabho/kolkata-bus-gtfs"
+
+No additional restrictions — You may not apply legal terms or technological
+measures that legally restrict others from doing anything the license permits.
+
+Full license text: https://creativecommons.org/licenses/by/4.0/legalcode
