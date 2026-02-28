@@ -221,9 +221,9 @@ input::placeholder { color:var(--muted); }
 
   <div class="stop-entry-card">
     <div class="stop-entry-title">📍 Add Stop</div>
-    <div class="gps-bar">
-      <div class="gps-dot"></div>
-      <div class="gps-text" id="gpsText">Acquiring GPS...</div>
+    <div class="gps-bar" id="gpsBar">
+      <div class="gps-dot" id="gpsDot"></div>
+      <div class="gps-text" id="gpsText">Waiting for location permission...</div>
     </div>
     <div class="field-group">
       <label class="field-label">Stop Name</label>
@@ -259,8 +259,14 @@ input::placeholder { color:var(--muted); }
 
   <div class="dl-card" style="border-color:var(--accent-border);background:var(--accent-dim)">
     <div class="dl-card-title">📦 Your Trip File</div>
-    <p style="font-size:0.8rem;color:#aaa;line-height:1.5;margin-bottom:1rem">This single JSON file contains your entire trip. Download it and send it on WhatsApp.</p>
+    <p style="font-size:0.8rem;color:#aaa;line-height:1.5;margin-bottom:1rem">This single JSON file contains your entire trip. Download it and send it on WhatsApp. You can also email it to <a href="mailto:Kolkatabuses@gmail.com" style="color:var(--accent);text-decoration:none;">Kolkatabuses@gmail.com</a></p>
+    <div style="display:flex;align-items:center;gap:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.8rem;margin-bottom:1rem;">
+      <span style="font-size:0.7rem;color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:0.1em;flex-shrink:0">Email</span>
+      <span style="font-family:var(--mono);font-size:0.82rem;color:var(--accent);letter-spacing:0.02em;user-select:all">Kolkatabuses@gmail.com</span>
+    </div>
     <button class="btn btn-primary" onclick="dlJSON()">⬇ &nbsp;Download Trip JSON</button>
+    <br><br>
+    <button class="btn btn-ghost" onclick="emailJSON()" style="border-color:var(--accent-border);color:var(--accent)">✉ &nbsp;Email to Kolkatabuses@gmail.com</button>
   </div>
 
   <div class="dl-card">
@@ -307,18 +313,62 @@ function showScreen(n) {
 }
 
 // ── GPS ──
-function startGPS() {
-  if (!navigator.geolocation) { document.getElementById('gpsText').textContent = 'GPS unavailable'; return; }
+function setGPSStatus(state, msg) {
+  const bar = document.getElementById('gpsBar');
+  const dot = document.getElementById('gpsDot');
+  const text = document.getElementById('gpsText');
+  text.textContent = msg;
+  // States: waiting, acquiring, locked, failed
+  const colors = { waiting: '#ffab00', acquiring: '#ffab00', locked: '#00e676', failed: '#ff5252' };
+  dot.style.background = colors[state] || '#ffab00';
+  if (state === 'locked') dot.style.animation = 'none';
+  else dot.style.animation = 'gpspulse 1.5s infinite';
+}
+
+function requestGPSPermission(onGranted) {
+  if (!navigator.geolocation) {
+    setGPSStatus('failed', 'GPS not available on this device');
+    onGranted(false);
+    return;
+  }
+  setGPSStatus('acquiring', 'Requesting location permission...');
+  // One-time position request first — this triggers the permission popup on Safari
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      gps = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: Math.round(pos.coords.accuracy) };
+      setGPSStatus('locked', `GPS ready — ${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}  ±${gps.acc}m`);
+      onGranted(true);
+      // Now start watching for updates
+      startGPSWatch();
+    },
+    err => {
+      let msg = 'Location permission denied';
+      if (err.code === 1) msg = '⚠ Permission denied — tap here to fix in Settings';
+      if (err.code === 2) msg = '⚠ GPS signal not found — try outdoors';
+      if (err.code === 3) msg = '⚠ GPS timed out — try again';
+      setGPSStatus('failed', msg);
+      onGranted(false);
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+}
+
+function startGPSWatch() {
+  if (gpsWatch !== null) return;
   gpsWatch = navigator.geolocation.watchPosition(
     p => {
       gps = { lat: p.coords.latitude, lon: p.coords.longitude, acc: Math.round(p.coords.accuracy) };
-      document.getElementById('gpsText').textContent = `${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}  ±${gps.acc}m`;
+      setGPSStatus('locked', `${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}  ±${gps.acc}m`);
     },
-    () => { document.getElementById('gpsText').textContent = 'GPS failed — coords will be 0,0'; },
+    () => { setGPSStatus('failed', '⚠ GPS signal lost'); },
     { enableHighAccuracy: true, maximumAge: 4000 }
   );
 }
-function stopGPS() { if (gpsWatch !== null) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; } }
+
+function stopGPS() {
+  if (gpsWatch !== null) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; }
+  gps = null;
+}
 
 // ── TIMER ──
 function startTimer() {
@@ -373,6 +423,7 @@ function startTrip() {
   const headsign = document.getElementById('headsign').value.trim();
   if (!routeId) { toast('Enter a Route ID first'); return; }
   if (!headsign) { toast('Enter the headsign'); return; }
+
   const t = nowHMS();
   trip = {
     routeId, headsign,
@@ -385,17 +436,36 @@ function startTrip() {
     tripId: makeTripId(routeId, t, document.getElementById('direction').value),
     startTime: new Date(), startTimeStr: t, stops: []
   };
+
   document.getElementById('dispRoute').textContent = `${routeId} → ${headsign}`;
   document.getElementById('dispTripId').textContent = trip.tripId;
   document.getElementById('dispStart').textContent = t;
   document.getElementById('dispCount').textContent = '0';
-  startTimer(); startGPS(); showScreen(1); toast('Trip started! Add your first stop.');
+
+  // Move to recording screen first so GPS bar is visible
+  showScreen(1);
+  startTimer();
+
+  // Request GPS permission — this triggers the Safari permission popup
+  // as a direct result of the user tapping On Bus
+  setGPSStatus('acquiring', 'Tap Allow when your phone asks for location access...');
+  requestGPSPermission(granted => {
+    if (granted) {
+      toast('GPS locked ✓ — Add your first stop!');
+    } else {
+      toast('⚠ No GPS — stop coordinates will be 0,0');
+    }
+  });
 }
 
 // ── ADD STOP ──
 function addStop() {
   const name = document.getElementById('stopName').value.trim();
   if (!name) { toast('Enter stop name'); return; }
+  if (!gps) {
+    // Warn but still allow — unverified data is better than no data
+    if (!confirm('⚠ GPS not locked yet. This stop will have no coordinates (0,0). Add anyway?')) return;
+  }
   const arr = nowHMS();
   const dep = addSecs(arr, dwell);
   const seq = trip.stops.length + 1;
@@ -543,6 +613,31 @@ function dlFile(name, content, type='text/csv;charset=utf-8;') {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 function dlJSON() { dlFile(jsonFilename(), buildJSON(), 'application/json'); toast('JSON downloaded — send on WhatsApp!'); }
+function emailJSON() {
+  const subject = encodeURIComponent(`Bus Trip Data — ${trip.routeId} — ${trip.collectedOn}`);
+  const body = encodeURIComponent(
+    `Hi,
+
+Please find attached my bus trip data for route ${trip.routeId} (${trip.routeName}).
+
+Collected by: ${trip.collectedBy}
+Date: ${trip.collectedOn}
+Stops: ${trip.stops.length}
+Trip ID: ${trip.tripId}
+
+I have downloaded the JSON file and attached it to this email.
+
+Regards,
+${trip.collectedBy}`
+  );
+  // Download the file first so they can attach it
+  dlFile(jsonFilename(), buildJSON(), 'application/json');
+  // Open mail client with pre-filled details
+  setTimeout(() => {
+    window.location.href = `mailto:Kolkatabuses@gmail.com?subject=${subject}&body=${body}`;
+    toast('File downloaded — attach it to the email!');
+  }, 500);
+}
 function dlSingle(name) { const f=FILES.find(x=>x.name===name); if(f){dlFile(name,f.fn()); toast(`${name} downloaded`);} }
 async function downloadAll() {
   for (const f of FILES) { dlFile(f.name, f.fn()); await new Promise(r=>setTimeout(r,300)); }
@@ -550,12 +645,13 @@ async function downloadAll() {
 }
 
 function newTrip() {
+  stopGPS();
   trip={}; timerSecs=0; dwell=30; gps=null;
   document.getElementById('tripTimer').textContent='00:00:00';
   document.getElementById('stopsListEl').innerHTML='';
   document.getElementById('stopCountLbl').textContent='0 stops';
   document.getElementById('dwellVal').textContent='30';
-  document.getElementById('gpsText').textContent='Acquiring GPS...';
+  setGPSStatus('waiting', 'Waiting for location permission...');
   document.getElementById('collectedBy').value='';
   showScreen(0);
 }
